@@ -145,12 +145,15 @@ public class Main {
         public boolean block() throws InterruptedException {
             if (deadline == null) {
                 deadline = Instant.now().plus(Duration.ofSeconds(5)).toEpochMilli();
+                Thread.sleep(100);
                 return false;
             }
+            final long remainder = deadline - System.currentTimeMillis();
             if (result == null && System.currentTimeMillis() >= deadline) {
                 result = tlr.nextDouble();
                 return true;
             }
+            Thread.sleep(Math.min(100, remainder));
             return false;
         }
 
