@@ -4,8 +4,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -19,25 +21,45 @@ public class Main {
 
         final boolean useManaged = false;
 
-        IntStream.range(0, 100)
+        Optional<Double> reduce = IntStream.range(0, 10000)
                 .mapToObj(i -> ForkJoinPool.commonPool().submit(() -> {
-                    if (useManaged) {
-                        try {
-                            System.out.println(Thread.currentThread().getName() + " sleeping");
-                            ForkJoinPool.managedBlock(new ManagedSleepBlocker());
-                            System.out.println(Thread.currentThread().getName() + " awake");
-                        } catch (InterruptedException e) {
-                            throw new RuntimeException(e);
-                        }
-                    } else {
-                        new UnmanagedSleepBlocker().runSleep();
+//                    final ManagedSleepingResultBlocker managedSleepingResultBlocker = new ManagedSleepingResultBlocker();
+//                    try {
+//                        ForkJoinPool.managedBlock(managedSleepingResultBlocker);
+//                    } catch (InterruptedException e) {
+//                        throw new RuntimeException(e);
+//                    }
+//                    return managedSleepingResultBlocker.getResult();
+
+                    final ManagedDelayingResultBlocker managedDelayingResultBlocker = new ManagedDelayingResultBlocker();
+                    try {
+                        ForkJoinPool.managedBlock(managedDelayingResultBlocker);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
                     }
+                    return managedDelayingResultBlocker.getResult();
+
+
+
+//                    if (useManaged) {
+//                        try {
+//                            System.out.println(Thread.currentThread().getName() + " sleeping");
+//                            ForkJoinPool.managedBlock(new ManagedSleepBlocker());
+//                            System.out.println(Thread.currentThread().getName() + " awake");
+//                        } catch (InterruptedException e) {
+//                            throw new RuntimeException(e);
+//                        }
+//                    } else {
+//                        new UnmanagedSleepBlocker().runSleep();
+//                    }
                 }))
                 .collect(Collectors.toList())
-                .forEach(ForkJoinTask::join);
+                .stream()
+                .map(ForkJoinTask::join)
+                .reduce(Double::sum);
 
         final int poolSizeEnding = ForkJoinPool.commonPool().getPoolSize();
-        System.out.println("Done");
+        System.out.println("Done: " + reduce.orElse(null));
     }
 
     private static class UnmanagedSleepBlocker {
@@ -86,6 +108,55 @@ public class Main {
             final boolean result = System.currentTimeMillis() >= deadline;
             System.out.println(Thread.currentThread() + " releasable = " + result);
             return result;
+        }
+    }
+
+    private static class ManagedSleepingResultBlocker implements ForkJoinPool.ManagedBlocker {
+        private static final ThreadLocalRandom tlr = ThreadLocalRandom.current();
+        private Double result;
+
+        public Double getResult() {
+            return result;
+        }
+
+        @Override
+        public boolean block() throws InterruptedException {
+            TimeUnit.SECONDS.sleep(5);
+            result = tlr.nextDouble();
+            return false;
+        }
+
+        @Override
+        public boolean isReleasable() {
+            return result != null;
+        }
+    }
+
+    private static class ManagedDelayingResultBlocker implements ForkJoinPool.ManagedBlocker {
+        private static final ThreadLocalRandom tlr = ThreadLocalRandom.current();
+        private Long deadline;
+        private Double result;
+
+        public Double getResult() {
+            return result;
+        }
+
+        @Override
+        public boolean block() throws InterruptedException {
+            if (deadline == null) {
+                deadline = Instant.now().plus(Duration.ofSeconds(5)).toEpochMilli();
+                return false;
+            }
+            if (result == null && System.currentTimeMillis() >= deadline) {
+                result = tlr.nextDouble();
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public boolean isReleasable() {
+            return result != null;
         }
     }
 }
