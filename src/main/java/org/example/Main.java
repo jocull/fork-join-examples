@@ -5,11 +5,9 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.ForkJoinTask;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -21,42 +19,55 @@ public class Main {
 
         final boolean useManaged = false;
 
-        Optional<Double> reduce = IntStream.range(0, 10000)
-                .mapToObj(i -> ForkJoinPool.commonPool().submit(() -> {
-//                    final ManagedSleepingResultBlocker managedSleepingResultBlocker = new ManagedSleepingResultBlocker();
-//                    try {
-//                        ForkJoinPool.managedBlock(managedSleepingResultBlocker);
-//                    } catch (InterruptedException e) {
-//                        throw new RuntimeException(e);
-//                    }
-//                    return managedSleepingResultBlocker.getResult();
+        Optional<Double> reduce = IntStream.range(0, 1000000)
+                .mapToObj(i -> {
+                            final CompletableFuture<Double> future = new CompletableFuture<>();
+                            CompletableFuture.delayedExecutor(5, TimeUnit.SECONDS).execute(() -> {
+                                future.complete(ThreadLocalRandom.current().nextDouble());
+                            });
+                            return future;
+                        })
+                .collect(Collectors.toList())
+                .stream()
+                .map(CompletableFuture::join)
+                .reduce(Double::sum);
 
-                    final ManagedDelayingResultBlocker managedDelayingResultBlocker = new ManagedDelayingResultBlocker();
-                    try {
-                        ForkJoinPool.managedBlock(managedDelayingResultBlocker);
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
-                    return managedDelayingResultBlocker.getResult();
-
-
-
-//                    if (useManaged) {
+//        Optional<Double> reduce = IntStream.range(0, 10000)
+//                .mapToObj(i -> {
+//                    return ForkJoinPool.commonPool().submit(() -> {
+////                        final ManagedSleepingResultBlocker managedSleepingResultBlocker = new ManagedSleepingResultBlocker();
+////                        try {
+////                            ForkJoinPool.managedBlock(managedSleepingResultBlocker);
+////                        } catch (InterruptedException e) {
+////                            throw new RuntimeException(e);
+////                        }
+////                        return managedSleepingResultBlocker.getResult();
+//
+//                        final ManagedDelayingResultBlocker managedDelayingResultBlocker = new ManagedDelayingResultBlocker();
 //                        try {
-//                            System.out.println(Thread.currentThread().getName() + " sleeping");
-//                            ForkJoinPool.managedBlock(new ManagedSleepBlocker());
-//                            System.out.println(Thread.currentThread().getName() + " awake");
+//                            ForkJoinPool.managedBlock(managedDelayingResultBlocker);
 //                        } catch (InterruptedException e) {
 //                            throw new RuntimeException(e);
 //                        }
-//                    } else {
-//                        new UnmanagedSleepBlocker().runSleep();
-//                    }
-                }))
-                .collect(Collectors.toList())
-                .stream()
-                .map(ForkJoinTask::join)
-                .reduce(Double::sum);
+//                        return managedDelayingResultBlocker.getResult();
+//
+////                        if (useManaged) {
+////                            try {
+////                                System.out.println(Thread.currentThread().getName() + " sleeping");
+////                                ForkJoinPool.managedBlock(new ManagedSleepBlocker());
+////                                System.out.println(Thread.currentThread().getName() + " awake");
+////                            } catch (InterruptedException e) {
+////                                throw new RuntimeException(e);
+////                            }
+////                        } else {
+////                            new UnmanagedSleepBlocker().runSleep();
+////                        }
+//                    });
+//                })
+//                .collect(Collectors.toList())
+//                .stream()
+//                .map(ForkJoinTask::join)
+//                .reduce(Double::sum);
 
         final int poolSizeEnding = ForkJoinPool.commonPool().getPoolSize();
         System.out.println("Done: " + reduce.orElse(null));
