@@ -19,18 +19,33 @@ public class Main {
 
         final boolean useManaged = false;
 
-        Optional<Double> reduce = IntStream.range(0, 1000000)
+        Optional<Double> reduce = IntStream.range(0, 10000)
                 .mapToObj(i -> {
-                            final CompletableFuture<Double> future = new CompletableFuture<>();
-                            CompletableFuture.delayedExecutor(5, TimeUnit.SECONDS).execute(() -> {
-                                future.complete(ThreadLocalRandom.current().nextDouble());
-                            });
-                            return future;
-                        })
+                    return ForkJoinPool.commonPool().submit(() -> {
+                        final CompletableFuture<Double> future = new CompletableFuture<>();
+                        CompletableFuture.delayedExecutor(5, TimeUnit.SECONDS).execute(() -> {
+                            future.complete(ThreadLocalRandom.current().nextDouble());
+                        });
+                        return future.join();
+                    });
+                })
                 .collect(Collectors.toList())
                 .stream()
-                .map(CompletableFuture::join)
+                .map(ForkJoinTask::join)
                 .reduce(Double::sum);
+
+//        Optional<Double> reduce = IntStream.range(0, 1000000)
+//                .mapToObj(i -> {
+//                            final CompletableFuture<Double> future = new CompletableFuture<>();
+//                            CompletableFuture.delayedExecutor(5, TimeUnit.SECONDS).execute(() -> {
+//                                future.complete(ThreadLocalRandom.current().nextDouble());
+//                            });
+//                            return future;
+//                        })
+//                .collect(Collectors.toList())
+//                .stream()
+//                .map(CompletableFuture::join)
+//                .reduce(Double::sum);
 
 //        Optional<Double> reduce = IntStream.range(0, 10000)
 //                .mapToObj(i -> {
