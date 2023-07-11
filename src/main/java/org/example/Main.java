@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -19,20 +18,28 @@ public class Main {
 
         final boolean useManaged = false;
 
-        Optional<Double> reduce = IntStream.range(0, 10000)
-                .mapToObj(i -> {
-                    return ForkJoinPool.commonPool().submit(() -> {
-                        final CompletableFuture<Double> future = new CompletableFuture<>();
-                        CompletableFuture.delayedExecutor(5, TimeUnit.SECONDS).execute(() -> {
-                            future.complete(ThreadLocalRandom.current().nextDouble());
-                        });
-                        return future.join();
-                    });
-                })
-                .collect(Collectors.toList())
-                .stream()
-                .map(ForkJoinTask::join)
-                .reduce(Double::sum);
+        Optional<Double> reduce = Optional.of(ForkJoinPool.commonPool().submit(new ManyDelayedRecursiveTask(10000)).fork().join());
+
+//        Optional<Double> reduce = IntStream.range(0, 10000)
+//                .mapToObj(i -> CompletableFuture.supplyAsync(() -> ThreadLocalRandom.current().nextDouble(),
+//                        CompletableFuture.delayedExecutor(5, TimeUnit.SECONDS)))
+//                .collect(Collectors.toList())
+//                .stream()
+//                .map(CompletableFuture::join)
+//                .reduce(Double::sum);
+
+//        Optional<Double> reduce = IntStream.range(0, 10000)
+//                .mapToObj(i -> ForkJoinPool.commonPool().submit(() -> {
+//                    final CompletableFuture<Double> future = new CompletableFuture<>();
+//                    CompletableFuture.delayedExecutor(5, TimeUnit.SECONDS).execute(() -> {
+//                        future.complete(ThreadLocalRandom.current().nextDouble());
+//                    });
+//                    return future.join();
+//                }))
+//                .collect(Collectors.toList())
+//                .stream()
+//                .map(ForkJoinTask::join)
+//                .reduce(Double::sum);
 
 //        Optional<Double> reduce = IntStream.range(0, 1000000)
 //                .mapToObj(i -> {
@@ -186,6 +193,34 @@ public class Main {
         @Override
         public boolean isReleasable() {
             return result != null;
+        }
+    }
+
+    private static class ManyDelayedRecursiveTask extends RecursiveTask<Double> {
+        private final int iterations;
+
+        public ManyDelayedRecursiveTask(int iterations) {
+            this.iterations = iterations;
+        }
+
+        @Override
+        protected Double compute() {
+            return IntStream.range(0, iterations)
+                    .mapToObj(i -> new DelayedRecursiveTask())
+                    .map(ForkJoinTask::fork)
+                    .collect(Collectors.toList())
+                    .stream().map(ForkJoinTask::join)
+                    .map(CompletableFuture::join)
+                    .reduce(Double::sum)
+                    .orElseThrow();
+        }
+    }
+
+    private static class DelayedRecursiveTask extends RecursiveTask<CompletableFuture<Double>> {
+        @Override
+        protected CompletableFuture<Double> compute() {
+            return CompletableFuture.supplyAsync(() -> ThreadLocalRandom.current().nextDouble(),
+                    CompletableFuture.delayedExecutor(5, TimeUnit.SECONDS));
         }
     }
 }
