@@ -1,5 +1,6 @@
 package org.example;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
@@ -8,8 +9,8 @@ public class Main {
     public static void main(String[] args) {
         final int poolSizeStarting = ForkJoinPool.commonPool().getPoolSize();
 
-        final ExecutorService pool1 = Executors.newWorkStealingPool();
-        final ExecutorService pool2 = Executors.newWorkStealingPool();
+        final ForkJoinPool pool1 = (ForkJoinPool) Executors.newWorkStealingPool();
+        final ForkJoinPool pool2 = (ForkJoinPool) Executors.newWorkStealingPool();
 
         final CountDownLatch latch = new CountDownLatch(9000);
         Future<?> submit = pool1.submit(() -> {
@@ -33,10 +34,16 @@ public class Main {
                             }
                         });
 
-                        for (long x = 0; x < 500_000_000; x++) {
+                        System.out.println(Instant.now() + " Busy #" + lock + " @ " + Thread.currentThread());
+                        System.out.println("Pool Stats = " + List.of(
+                                pool2.getParallelism(),
+                                pool2.getPoolSize(),
+                                pool2.getActiveThreadCount(),
+                                pool2.getQueuedTaskCount()));
+                        for (long x = 0; x < 5_000_000_000L; x++) {
                             // so busy
                         }
-                        System.out.println("Done #" + lock + " @ " + Thread.currentThread());
+                        System.out.println(Instant.now() + " Done #" + lock + " @ " + Thread.currentThread());
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
