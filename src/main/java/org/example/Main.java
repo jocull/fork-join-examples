@@ -13,6 +13,8 @@ public class Main {
         final ForkJoinPool pool2 = (ForkJoinPool) Executors.newWorkStealingPool();
 
         final CountDownLatch latch = new CountDownLatch(9000);
+        final Semaphore semaphore = new Semaphore(Runtime.getRuntime().availableProcessors(), true);
+
         Future<?> submit = pool1.submit(() -> {
             List<Future<?>> submits = new ArrayList<>(10000);
             for (int i = 0; i < 10000; i++) {
@@ -34,16 +36,34 @@ public class Main {
                             }
                         });
 
-                        System.out.println(Instant.now() + " Busy #" + lock + " @ " + Thread.currentThread());
-                        System.out.println("Pool Stats = " + List.of(
-                                pool2.getParallelism(),
-                                pool2.getPoolSize(),
-                                pool2.getActiveThreadCount(),
-                                pool2.getQueuedTaskCount()));
-                        for (long x = 0; x < 5_000_000_000L; x++) {
-                            // so busy
+                        ForkJoinPool.managedBlock(new ForkJoinPool.ManagedBlocker() {
+                            private boolean acquired;
+
+                            @Override
+                            public boolean block() throws InterruptedException {
+                                acquired = semaphore.tryAcquire(1, TimeUnit.SECONDS);
+                                return acquired;
+                            }
+
+                            @Override
+                            public boolean isReleasable() {
+                                return acquired;
+                            }
+                        });
+                        try {
+                            System.out.println(Instant.now() + " Busy #" + lock + " @ " + Thread.currentThread());
+                            System.out.println("Pool Stats = " + List.of(
+                                    pool2.getParallelism(),
+                                    pool2.getPoolSize(),
+                                    pool2.getActiveThreadCount(),
+                                    pool2.getQueuedTaskCount()));
+                            for (long x = 0; x < 5_000_000_000L; x++) {
+                                // so busy
+                            }
+                            System.out.println(Instant.now() + " Done #" + lock + " @ " + Thread.currentThread());
+                        } finally {
+                            semaphore.release();
                         }
-                        System.out.println(Instant.now() + " Done #" + lock + " @ " + Thread.currentThread());
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
