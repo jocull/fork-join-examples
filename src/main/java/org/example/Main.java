@@ -10,9 +10,7 @@ public class Main {
         final int poolSizeStarting = ForkJoinPool.commonPool().getPoolSize();
 
         final ReleaseRetainThreadPoolExecutor pool1 = new ReleaseRetainThreadPoolExecutor(1000, Runtime.getRuntime().availableProcessors());
-
         final CountDownLatch latch = new CountDownLatch(9000);
-        final Semaphore semaphore = new Semaphore(Runtime.getRuntime().availableProcessors(), true);
 
         List<Future<?>> submits = new ArrayList<>(10000);
         for (int i = 0; i < 10000; i++) {
@@ -20,15 +18,11 @@ public class Main {
             Future<?> submit1 = pool1.submit(() -> {
                 try {
                     ReleaseRetainThreadPoolExecutor.releaseForOperation(() -> latch.await());
-                    try {
-                        System.out.println(Instant.now() + " Busy #" + lock + " @ " + Thread.currentThread());
-                        for (long x = 0; x < 5_000_000_000L; x++) {
-                            // so busy
-                        }
-                        System.out.println(Instant.now() + " Done #" + lock + " @ " + Thread.currentThread());
-                    } finally {
-                        semaphore.release();
+                    System.out.println(Instant.now() + " Busy #" + lock + " @ " + Thread.currentThread());
+                    for (long x = 0; x < 5_000_000_000L; x++) {
+                        // so busy
                     }
+                    System.out.println(Instant.now() + " Done #" + lock + " @ " + Thread.currentThread());
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
