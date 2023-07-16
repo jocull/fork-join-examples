@@ -1,46 +1,111 @@
 package org.example;
 
+import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class Main {
-    public static void main(String[] args) {
-        final int poolSizeStarting = ForkJoinPool.commonPool().getPoolSize();
-
-        final ReleaseRetainThreadPoolExecutor pool1 = new ReleaseRetainThreadPoolExecutor(1000, Runtime.getRuntime().availableProcessors());
-        final CountDownLatch latch = new CountDownLatch(9000);
-
-        List<Future<?>> submits = new ArrayList<>(10000);
-        for (int i = 0; i < 10000; i++) {
-            final int lock = i;
-            Future<?> submit1 = pool1.submit(() -> {
-                try {
-                    ReleaseRetainThreadPoolExecutor.releaseForOperation(() -> latch.await());
-                    System.out.println(Instant.now() + " Busy #" + lock + " @ " + Thread.currentThread());
-                    for (long x = 0; x < 5_000_000_000L; x++) {
-                        // so busy
-                    }
-                    System.out.println(Instant.now() + " Done #" + lock + " @ " + Thread.currentThread());
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-            });
-//            try {
-//                Thread.sleep(1);
-//            } catch (InterruptedException e) {
-//                throw new RuntimeException(e);
-//            }
-            latch.countDown();
-            submits.add(submit1);
+    public static void main(String[] args) throws InterruptedException {
+        System.out.println("========== A TESTS ==========");
+        for (int i = 0; i < 10; i++) {
+            a();
         }
-        submits.forEach(j -> {
-            try {
-                j.get();
-            } catch (InterruptedException | ExecutionException e) {
-                throw new RuntimeException(e);
-            }
-        });
+
+        System.out.println("========== B TESTS ==========");
+        for (int i = 0; i < 10; i++) {
+            b();
+        }
+    }
+
+    private static void a() throws InterruptedException {
+        final ExecutorService executor = Executors.newFixedThreadPool(1000);
+        final CountDownLatch latch = new CountDownLatch(9000);
+        final Instant start = Instant.now();
+
+        final AtomicInteger workCounter = new AtomicInteger();
+        IntStream.range(0, 10_000)
+                .mapToObj(i -> {
+                    final int lock = i;
+                    workCounter.incrementAndGet();
+                    final Future<?> submit = executor.submit(() -> {
+                        try {
+                            // SemaphoreThread.releaseForOperation(() -> latch.await());
+                            latch.await();
+
+                            // System.out.println(Instant.now() + " Busy #" + lock + " @ " + Thread.currentThread());
+                            for (long x = 0; x < 10_000_000L; x++) {
+                                // so busy
+                            }
+                            final int remaining = workCounter.decrementAndGet();
+                            // System.out.println(Instant.now() + " Done #" + lock + " @ " + Thread.currentThread() + " : " + remaining + " left");
+                        } catch (InterruptedException ex) {
+                            throw new RuntimeException(ex);
+                        }
+                    });
+                    latch.countDown();
+                    return submit;
+                })
+                .collect(Collectors.toList())
+                .forEach(j -> {
+                    try {
+                        j.get();
+                    } catch (InterruptedException | ExecutionException ex) {
+                        throw new RuntimeException(ex);
+                    }
+                });
+
+        final Instant end = Instant.now();
+        final Duration duration = Duration.between(start, end);
+        System.out.println("Took " + duration);
+
+        executor.shutdown();
+        executor.awaitTermination(30, TimeUnit.SECONDS);
+    }
+
+    private static void b() throws InterruptedException {
+        final ExecutorService executor = new SemaphoreThreadPoolExecutor(1000, Runtime.getRuntime().availableProcessors());
+        final CountDownLatch latch = new CountDownLatch(9000);
+        final Instant start = Instant.now();
+
+        final AtomicInteger workCounter = new AtomicInteger();
+        IntStream.range(0, 10_000)
+                .mapToObj(i -> {
+                    final int lock = i;
+                    workCounter.incrementAndGet();
+                    final Future<?> submit = executor.submit(() -> {
+                        try {
+                            SemaphoreThread.releaseForOperation(() -> latch.await());
+
+                            // System.out.println(Instant.now() + " Busy #" + lock + " @ " + Thread.currentThread());
+                            for (long x = 0; x < 10_000_000L; x++) {
+                                // so busy
+                            }
+                            final int remaining = workCounter.decrementAndGet();
+                            // System.out.println(Instant.now() + " Done #" + lock + " @ " + Thread.currentThread() + " : " + remaining + " left");
+                        } catch (InterruptedException ex) {
+                            throw new RuntimeException(ex);
+                        }
+                    });
+                    latch.countDown();
+                    return submit;
+                })
+                .collect(Collectors.toList())
+                .forEach(j -> {
+                    try {
+                        j.get();
+                    } catch (InterruptedException | ExecutionException ex) {
+                        throw new RuntimeException(ex);
+                    }
+                });
+
+        final Instant end = Instant.now();
+        final Duration duration = Duration.between(start, end);
+        System.out.println("Took " + duration);
+
+        executor.shutdown();
+        executor.awaitTermination(30, TimeUnit.SECONDS);
     }
 }
