@@ -9,7 +9,7 @@ public class Main {
     public static void main(String[] args) {
         final int poolSizeStarting = ForkJoinPool.commonPool().getPoolSize();
 
-        final ExecutorService pool1 = Executors.newFixedThreadPool(1000);
+        final ReleaseRetainThreadPoolExecutor pool1 = new ReleaseRetainThreadPoolExecutor(1000, Runtime.getRuntime().availableProcessors());
 
         final CountDownLatch latch = new CountDownLatch(9000);
         final Semaphore semaphore = new Semaphore(Runtime.getRuntime().availableProcessors(), true);
@@ -19,35 +19,7 @@ public class Main {
             final int lock = i;
             Future<?> submit1 = pool1.submit(() -> {
                 try {
-                    ForkJoinPool.managedBlock(new ForkJoinPool.ManagedBlocker() {
-                        private boolean acquired;
-
-                        @Override
-                        public boolean block() throws InterruptedException {
-                            acquired = latch.await(10, TimeUnit.MILLISECONDS);
-                            return acquired;
-                        }
-
-                        @Override
-                        public boolean isReleasable() {
-                            return acquired;
-                        }
-                    });
-
-                    ForkJoinPool.managedBlock(new ForkJoinPool.ManagedBlocker() {
-                        private boolean acquired;
-
-                        @Override
-                        public boolean block() throws InterruptedException {
-                            acquired = semaphore.tryAcquire(1, TimeUnit.SECONDS);
-                            return acquired;
-                        }
-
-                        @Override
-                        public boolean isReleasable() {
-                            return acquired;
-                        }
-                    });
+                    ReleaseRetainThreadPoolExecutor.releaseForOperation(() -> latch.await());
                     try {
                         System.out.println(Instant.now() + " Busy #" + lock + " @ " + Thread.currentThread());
                         for (long x = 0; x < 5_000_000_000L; x++) {
@@ -61,11 +33,11 @@ public class Main {
                     throw new RuntimeException(e);
                 }
             });
-            try {
-                Thread.sleep(1);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
+//            try {
+//                Thread.sleep(1);
+//            } catch (InterruptedException e) {
+//                throw new RuntimeException(e);
+//            }
             latch.countDown();
             submits.add(submit1);
         }
